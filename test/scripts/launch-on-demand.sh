@@ -16,7 +16,7 @@ elif [[ -f slave_image ]]; then
     public=""
 else
     # create master instances
-    image="ami-0afc9060cdd4c2aab" # experiment image
+    image="ami-09c41c4556fa22686" # experiment image
     type="m5.2xlarge"
     public="--public"
 fi
@@ -53,11 +53,18 @@ done
 
 echo "Back up ~/.ssh/known_hosts to ./known_hosts_backup"
 echo "Wait for launched instances able to be connected"
-mv ~/.ssh/known_hosts known_hosts_backup
+backup_host=false
+if [[ -f ~/.ssh/known_hosts ]]; then
+    backup_host=true
+fi
+if $backup_host; then
+    mv ~/.ssh/known_hosts known_hosts_backup
+fi
 # retrieve IPs and SSH all instances to update known_hosts
 while true
 do
     rm -f ~/.ssh/known_hosts
+    touch ~/.ssh/known_hosts
     $SCRIPT_DIR/ip.sh $public
     if [[ $1 -eq `cat ~/.ssh/known_hosts | wc -l`  ]]; then
         break
@@ -65,4 +72,6 @@ do
 done
 wc -l ~/.ssh/known_hosts
 echo "Restore known_hosts"
-mv known_hosts_backup ~/.ssh/known_hosts
+if $backup_host; then
+    mv known_hosts_backup ~/.ssh/known_hosts
+fi
