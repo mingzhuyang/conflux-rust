@@ -22,10 +22,7 @@ pub use self::{
     synchronization_service::{
         SharedSynchronizationService, SynchronizationService,
     },
-    synchronization_state::{
-        SentTransactionContainer, SynchronizationPeerState,
-        SynchronizationState,
-    },
+    synchronization_state::{SynchronizationPeerState, SynchronizationState},
 };
 
 pub mod random {
