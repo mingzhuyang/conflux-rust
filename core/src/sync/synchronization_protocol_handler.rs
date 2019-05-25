@@ -1859,6 +1859,10 @@ impl SynchronizationProtocolHandler {
         tx_ids: HashSet<TxPropagateId>, syn: &mut SynchronizationState,
     ) -> Result<(), Error>
     {
+        if indices.is_empty() {
+            return Ok(());
+        }
+
         match self.send_request(
             io,
             peer_id,
