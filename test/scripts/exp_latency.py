@@ -75,9 +75,12 @@ class RemoteSimulateConfig:
     @staticmethod
     def parse(batch_config):
         config_groups = []
+        if batch_config[-1] == ",":
+            # Ignore trailing comma
+            batch_config = batch_config[:-1]
         for config in batch_config.split(","):
             fields = config.split(":")
-            assert len(fields) == 5, "invalid config, format is <block_gen_interval_ms>:<txs_per_block>:<tx_size>:<num_blocks>"
+            assert len(fields) == 5, "invalid config, format is <block_gen_interval_ms>:<txs_per_block>:<tx_size>:<num_blocks>:<tps>"
             config_groups.append(RemoteSimulateConfig(
                 int(fields[0]),
                 int(fields[1]),
@@ -106,7 +109,7 @@ class LatencyExperiment(ArgumentHolder):
         self.data_propagate_interval_ms = 1000
         self.data_propagate_size = 1000
 
-        self.batch_config = "500:1:150000:1000:2000,500:1:150000:1000:3000,500:1:150000:1000:4000"
+        self.batch_config = "250:1:150000:1000:4000,250:1:150000:1000:6000,250:1:150000:1000:8000,250:1:150000:1000:12000"
 
         ArgumentHolder.__init__(self)
 
@@ -125,7 +128,7 @@ class LatencyExperiment(ArgumentHolder):
             print("Kill remote conflux and copy logs ...")
             kill_remote_conflux(self.ips_file)
             self.copy_remote_logs()
-            cleanup_remote_logs(self.ips_file)
+            # cleanup_remote_logs(self.ips_file)
 
             print("Statistic logs ...")
             os.system("echo throttling logs: `grep -i thrott -r logs | wc -l`")
