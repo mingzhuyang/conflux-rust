@@ -32,7 +32,6 @@ pub use crate::{
     log_entry::LogEntry,
     transaction::{
         Action, SignedTransaction, Transaction, TransactionWithSignature,
-        TxPropagateId,
     },
     transaction_address::TransactionAddress,
 };
