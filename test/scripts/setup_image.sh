@@ -21,7 +21,7 @@ apt_wait () {
   fi
 }
 sudo apt update
-# Wait for apt to be unlocked
+echo "Wait for apt to be unlocked"
 apt_wait
 sudo apt install -y iotop clang git jq pssh
 pip3 install prettytable
@@ -32,6 +32,7 @@ fi
 
 cd conflux-rust
 git reset --hard
+git fetch
 git checkout $branch
 git pull
 cargo update
