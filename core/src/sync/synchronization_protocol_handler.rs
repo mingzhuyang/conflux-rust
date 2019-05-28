@@ -33,7 +33,7 @@ use crate::{
     sync::synchronization_state::RequestMessage,
     verification::VerificationConfig,
 };
-use primitives::TransactionWithSignature;
+use primitives::{TransactionWithSignature, Block, SignedTransaction};
 use priority_send_queue::SendQueuePriority;
 use rlp::DecoderError;
 use std::{
@@ -179,10 +179,6 @@ impl SynchronizationProtocolHandler {
     ) -> Self
     {
         let start_as_catch_up_mode = protocol_config.start_as_catch_up_mode;
-        // FIXME: make sent_transaction_window_size to be 2^pow.
-        let sent_transaction_window_size =
-            protocol_config.tx_maintained_for_peer_timeout.as_millis()
-                / protocol_config.send_tx_period.as_millis();
 
         SynchronizationProtocolHandler {
             protocol_config,
@@ -192,8 +188,9 @@ impl SynchronizationProtocolHandler {
                 pow_config,
                 fast_recover,
             )),
-            syn: RwLock::new(SynchronizationState::new(start_as_catch_up_mode)),
-                sent_transaction_window_size as usize,
+            syn: RwLock::new(SynchronizationState::new(
+                start_as_catch_up_mode,
+            )),
             headers_in_flight: Default::default(),
             header_request_waittime: Default::default(),
             blocks_in_flight: Default::default(),
@@ -459,95 +456,6 @@ impl SynchronizationProtocolHandler {
         Ok(())
     }
 
-
-        self.syn
-            .write()
-            .received_transactions
-            .append_transaction_ids(tx_ids);
-            &transactions,
-
-        let resp = {
-            let transactions = {
-                let syn = self.syn.read();
-                get_transactions
-                    .indices
-                    .iter()
-                    .filter_map(|tx_idx| {
-                        if let Some(tx) =
-                            syn.sent_transactions.get_transaction(tx_idx)
-                        {
-                            Some(tx.transaction.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            };
-            GetTransactionsResponse {
-            }
-        };
-        debug!("on_get_transactions request {} txs, returned {} txs", get_transactions.indices.len(), resp.transactions.len());
-        self.send_message(io, peer, &resp, SendQueuePriority::Normal)?;
-        let peer_info = self.syn.read().get_peer_info(&peer)?;
-        let should_disconnect = {
-            let mut peer_info = peer_info.write();
-            if peer_info.notified_mode.is_some()
-                && (peer_info.notified_mode.unwrap() == true)
-            {
-                peer_info.received_transaction_count +=
-                    transaction_digests.trans_short_ids.len();
-                if peer_info.received_transaction_count
-                    > self.protocol_config.max_trans_count_received_in_catch_up
-                        as usize
-                {
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        };
-
-        if should_disconnect {
-            io.disconnect_peer(peer);
-            return Err(ErrorKind::TooManyTrans.into());
-        }
-        let (indices, tx_ids) = {
-            let mut indices = Vec::new();
-            let mut tx_ids = HashSet::new();
-            let mut syn = self.syn.write();
-            for (idx, tx_id) in
-                transaction_digests.trans_short_ids.iter().enumerate()
-            {
-                if syn.inflight_requested_transactions.contains(tx_id) {
-                    // Already being requested
-                    continue;
-                }
-                if syn.received_transactions.contains(tx_id) {
-                    // Already received
-                    continue;
-                }
-                syn.inflight_requested_transactions.insert(*tx_id);
-                let index =
-                    TransIndex::new((transaction_digests.window_index, idx));
-                indices.push(index);
-                tx_ids.insert(*tx_id);
-            }
-            (indices, tx_ids)
-        };
-
-        debug!("Request {} transactions from peer={}", indices.len(), peer);
-        match self.request_transactions(io, peer, indices, tx_ids.clone()) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let mut syn = self.syn.write();
-                for tx_id in tx_ids {
-                    syn.inflight_requested_transactions.remove(&tx_id);
-                }
-                Err(e)
-            }
-        }
     fn on_get_blocktxn(
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
@@ -1744,11 +1652,6 @@ impl SynchronizationProtocolHandler {
         }
     }
 
-        tx_ids: HashSet<TxPropagateId>,
-        if indices.is_empty() {
-            return Ok(());
-        }
-
     fn request_blocks_unchecked(
         &self, io: &NetworkContext, peer_id: PeerId, hashes: &Vec<H256>,
         with_public: bool,
@@ -1941,9 +1844,8 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, request_id: u64,
     ) -> Result<RequestMessage, Error> {
         let peer_info = self.syn.read().get_peer_info(&peer)?;
-        let mut syn = self.syn.write();
         let mut peer_info = peer_info.write();
-        let removed_req = self.remove_request(&mut *peer_info, request_id, &mut *syn);
+        let removed_req = self.remove_request(&mut *peer_info, request_id);
         if let Some(removed_req) = removed_req {
             while peer_info.has_pending_requests() {
                 if let Some(new_request_id) = peer_info.get_next_request_id() {
@@ -2090,17 +1992,13 @@ impl SynchronizationProtocolHandler {
         if lucky_peers.is_empty() {
             return;
         }
-        let mut tx_msg = Box::new(TransactionDigests {
-            window_index: 0,
-            trans_short_ids: Vec::new(),
-        });
+        let mut sent_transactions = Vec::new();
         {
             let mut syn = self.syn.write();
             let mut total_tx_bytes = 0;
             let mut new_last_sent_transaction_hashes =
                 HashSet::with_capacity(transactions.len());
             let mut keep_adding = true;
-            let mut sent_transactions = Vec::new();
 
             // After the iteration,
             // sent_transactions =
@@ -2122,23 +2020,23 @@ impl SynchronizationProtocolHandler {
                         keep_adding = false;
                         continue;
                     }
-                    sent_transactions.push(tx.clone());
-                    tx_msg.trans_short_ids.push(TxPropagateId::from(h));
+                    sent_transactions.push(tx.transaction.clone());
                     new_last_sent_transaction_hashes.insert(h);
                 }
             }
 
             syn.last_sent_transaction_hashes = new_last_sent_transaction_hashes;
-            tx_msg.window_index =
-                syn.sent_transactions.append_transactions(sent_transactions);
         }
-        if tx_msg.trans_short_ids.is_empty() {
+        if sent_transactions.is_empty() {
             return;
         }
+        let tx_msg = Box::new(Transactions {
+            transactions: sent_transactions,
+        });
 
         debug!(
             "Sent {} transaction ids to {} peers.",
-            tx_msg.trans_short_ids.len(),
+            tx_msg.transactions.len(),
             lucky_peers.len()
         );
         for peer_id in lucky_peers {
@@ -2152,7 +2050,7 @@ impl SynchronizationProtocolHandler {
                     trace!(
                         "{:02} <- Transactions ({} entries)",
                         peer_id,
-                        tx_msg.trans_short_ids.len()
+                        tx_msg.transactions.len()
                     );
                 }
                 Err(e) => {
@@ -2319,7 +2217,7 @@ impl SynchronizationProtocolHandler {
     }
 
     pub fn remove_request(
-        &self, peer_info: &mut SynchronizationPeerState, request_id: u64, syn: &mut SynchronizationState
+        &self, peer_info: &mut SynchronizationPeerState, request_id: u64
     ) -> Option<RequestMessage> {
         if let Some(req) = peer_info.remove_inflight_request(request_id) {
             match *req.message {

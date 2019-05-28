@@ -69,8 +69,6 @@ pub struct SynchronizationPeerRequest {
     pub timed_req: Arc<TimedSyncRequests>,
 }
 
-    ) -> usize {
-        next_time_tick
 pub struct SynchronizationPeerState {
     pub id: PeerId,
     pub protocol_version: u8,
@@ -177,14 +175,12 @@ pub struct SynchronizationState {
     /// propagate transactions in normal case.
     /// Holds a set of transactions recently sent to this peer to avoid
     /// spamming.
-    pub sent_transactions: SentTransactionContainer,
     pub last_sent_transaction_hashes: HashSet<H256>,
 }
 
 impl SynchronizationState {
     pub fn new(
-        catch_up_mode: bool, received_tx_index_timeout: u64,
-        sent_transaction_window_size: usize,
+        catch_up_mode: bool,
     ) -> Self
     {
         SynchronizationState {
@@ -192,9 +188,6 @@ impl SynchronizationState {
             peers: HashMap::new(),
             handshaking_peers: HashMap::new(),
             last_sent_transaction_hashes: Default::default(),
-            sent_transactions: SentTransactionContainer::new(
-                sent_transaction_window_size,
-            ),
         }
     }
 
