@@ -219,7 +219,7 @@ class P2PTest(ConfluxTestFramework):
                 pub_key = self.nodes[i].key
                 addr = self.nodes[i].addr
                 self.log.info("%d has addr=%s pubkey=%s", i, encode_hex(addr), pub_key)
-                tx = client.new_tx(value=int(default_config["TOTAL_COIN"]/num_nodes), receiver=encode_hex(addr), nonce=i)
+                tx = client.new_tx(value=int(default_config["TOTAL_COIN"]/num_nodes) - 21000, receiver=encode_hex(addr), nonce=i)
                 client.send_tx(tx)
 
         # setup monitor to report the current block count periodically
@@ -279,7 +279,11 @@ class P2PTest(ConfluxTestFramework):
 
         executor = ThreadPoolExecutor()
 
+        start = time.time()
         while True:
+            # Wait for at most 120 seconds
+            if time.time() - start > 120:
+                break
             block_counts = []
             best_blocks = []
             block_count_futures = []
@@ -366,7 +370,7 @@ class SimpleGenerateThread(GenerateThread):
         try:
             client = RpcClient(self.nodes[self.i])
             # Do not limit num tx in blocks, only limit it with block size
-            h = client.generate_block(10000000)
+            h = client.generate_block(10000000, self.tx_n * self.tx_data_len)
             self.log.debug("node %d actually generate block %s", self.i, h)
         except Exception as e:
             self.log.error("Node %d fails to generate block", self.i)
