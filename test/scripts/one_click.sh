@@ -25,7 +25,8 @@ run_latency_exp () {
     ssh ubuntu@${master_ip} "cd ./conflux-rust/test/scripts;rm -rf ~/.ssh/known_hosts;./launch-on-demand.sh $slave_count $key_pair $slave_role $slave_image;"
 
     # Run experiments
-    ssh ubuntu@${master_ip} "cd ./conflux-rust/test/scripts;python3 ./exp_latency.py --exp-name $exp_name --batch-config \"$exp_config\""
+    ssh ubuntu@${master_ip} "cd ./conflux-rust/test/scripts;python3 ./exp_latency.py --exp-name $exp_name --batch-config \"$exp_config\" --storage-memory-mb 16"
+    exit
 
     # Terminate slave instances
     rm -rf tmp_data
@@ -53,9 +54,9 @@ run_latency_exp () {
 # Different experiments in a batch is divided by commas
 # Example: "250:1:150000:1000:4000,250:1:150000:1000:6000,250:1:150000:1000:8000,250:1:150000:1000:12000"
 # Experiments for latency with the newest code, <txs_per_block> and <tx_size> will not take effects
-latency_latest_default="250:1:150000:2000:"
+latency_latest_default="250:1:1000000:2000:"
 exp_config=""
-for tps in 12000
+for tps in 4000
 do
     exp_config="${exp_config}${latency_latest_default}${tps},"
 done
@@ -64,9 +65,9 @@ branch="lpl_test"
 echo "start run $branch"
 run_latency_exp $branch "latency_latest" $exp_config
 
-branch="lpl_test_old"
-echo "start run $branch"
-run_latency_exp $branch "latency_latest" $exp_config
+#branch="lpl_test_old"
+#echo "start run $branch"
+#run_latency_exp $branch "latency_latest" $exp_config
 
 # Comment this line if the data on the master instances are needed for further analysis
 # ./terminate-on-demand.sh
